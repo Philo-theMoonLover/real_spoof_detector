@@ -1,5 +1,3 @@
-import os
-import glob
 import time
 import cv2
 import numpy as np
@@ -11,8 +9,7 @@ import torch.nn as nn
 import torchvision
 import math
 from PIL import Image
-import tkinter as tk
-from tkinter import filedialog
+
 
 BN = nn.BatchNorm2d
 
@@ -53,7 +50,6 @@ class BasicBlock(nn.Module):
 
 # AENet_C,S,G is based on ResNet-18
 class AENet(nn.Module):
-
     def __init__(self, block=BasicBlock, layers=[2, 2, 2, 2], num_classes=1000, sync_stats=False):
 
         global BN
@@ -103,8 +99,7 @@ class AENet(nn.Module):
                 BN(planes * block.expansion),
             )
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
+        layers = [block(self.inplanes, planes, stride, downsample)]
         self.inplanes = planes * block.expansion
         for i in range(1, blocks):
             layers.append(block(self.inplanes, planes))
@@ -123,14 +118,14 @@ class AENet(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        depth_map = self.depth_final(x)
-        reflect_map = self.reflect_final(x)
+        # depth_map = self.depth_final(x)
+        # reflect_map = self.reflect_final(x)
 
-        depth_map = self.sigmoid(depth_map)
-        depth_map = self.upsample14(depth_map)
+        # depth_map = self.sigmoid(depth_map)
+        # depth_map = self.upsample14(depth_map)
 
-        reflect_map = self.sigmoid(reflect_map)
-        reflect_map = self.upsample14(reflect_map)
+        # reflect_map = self.sigmoid(reflect_map)
+        # reflect_map = self.upsample14(reflect_map)
 
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
@@ -187,7 +182,7 @@ class TSNPredictor(CelebASpoofDetector):
     def __init__(self):
         self.num_class = 2
         self.net = AENet(num_classes=self.num_class)
-        checkpoint = torch.load('./ckpt_iter.pth.tar', map_location='cpu')  # ./ckpt_iter.pth.tar
+        checkpoint = torch.load('./ckpt_iter.pth.tar', map_location='cpu')
 
         pretrain(self.net, checkpoint['state_dict'])
 
@@ -198,7 +193,7 @@ class TSNPredictor(CelebASpoofDetector):
             torchvision.transforms.ToTensor(),
         ])
 
-        self.net.cpu()  # net.cuda(). Phiên bản torch ko hỗ trợ cuda
+        self.net.cpu()  # net.cuda()
         self.net.eval()
 
     def preprocess_data(self, image):
@@ -214,11 +209,10 @@ class TSNPredictor(CelebASpoofDetector):
             rst = self.net(input_var).detach()
         return rst.reshape(-1, self.num_class)
 
-    def predict(self, images):
+    def predict(self, image):
         real_data = []
-        for image in images:
-            data = self.preprocess_data(image)
-            real_data.append(data)
+        data = self.preprocess_data(image)
+        real_data.append(data)
         rst = self.eval_image(real_data)
         rst = torch.nn.functional.softmax(rst, dim=1).cpu().numpy().copy()
         probability = np.array(rst)
@@ -235,7 +229,7 @@ def crop_boundary(top, bottom, left, right, faces):
         left = max(0, left - 50)
         right += 50
         bottom += 50
-    return (top, bottom, left, right)
+    return top, bottom, left, right
 
 def crop_face(imgpath):
     frame = cv2.imread(imgpath)
@@ -255,45 +249,17 @@ def crop_face(imgpath):
         crop_img = cv2.cvtColor(crop_img, cv2.COLOR_RGB2BGR)
     return crop_img
 
-# def open_file_dialog():
-#     root = tk.Tk()
-#     root.withdraw()
-#
-#     file_path = filedialog.askopenfilename()
-#     if file_path:
-#         print("Selected file:", file_path)
-#     return file_path
-
-def generator(n1, n2):
-    yield n1, n2
-
 if __name__ == "__main__":
+    image_path = "image.jpg"    # INPUT IMAGE DIRECTORY HERE
     before = time.time()
-    # ls = open_file_dialog()
-    image_path = "image.jpg"  ######## INPUT IMAGE DIRECTORY HERE
     img = crop_face(image_path)
-    ls = [img]
-
-    final_image = []
-    final_image_id = []
-
-    for image_id in ls:
-        image = image_id
-        final_image.append(image)
-        final_image_id.append(image_path)
-
-    np_final_image_id = np.array(final_image_id)
-    np_final_image = np.array(final_image, dtype="uint8")  # "object" or "uint8"
 
     detector = TSNPredictor()
     output_probs = {}
-    image_iter = generator(np_final_image_id, np_final_image)
 
-    for image_id, image in image_iter:
-        prob = detector.predict(image)
-        for idx, i in enumerate(image_id):
-            output_probs[i] = float(prob[idx][1])
+    prob = detector.predict(img)
+    output_probs[image_path] = float(prob[0][1])
+
     after = time.time()
     print(output_probs)
-    print("Elapsed time: {} seconds".format((after - before) / len(ls)))
-    print(len(ls), 'images')
+    print("Elapsed time: {} seconds".format((after - before)))
